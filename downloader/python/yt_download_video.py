@@ -3,6 +3,7 @@ import yt_dlp
 import sys
 import os
 import time
+import uuid  # ✅ FIX: Untuk generate unique ID
 
 def download_youtube_video(url):
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -11,23 +12,56 @@ def download_youtube_video(url):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
     
-    video_id = None
+    # ✅ FIX: Generate unique filename dengan UUID + timestamp
+    unique_id = f"{int(time.time())}_{uuid.uuid4().hex[:6]}"
     
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',
-        'outtmpl': os.path.join(output_dir, 'ytvid_%(id)s.%(ext)s'),
-        'max_filesize': 100 * 1024 * 1024,  # 100MB limit
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best',
+        
+        # ✅ FIX: Output dengan unique ID, bukan cuma video_id
+        'outtmpl': os.path.join(output_dir, f'ytvid_{unique_id}_%(id)s.%(ext)s'),
+        'paths': {
+            'home': output_dir,
+            'temp': output_dir,
+        },
+        
+        'merge_output_format': 'mp4',
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
+        }],
+        
+        'format_sort': [
+            'res:2160',
+            'res:1440', 
+            'res:1080',
+            'fps',
+            'vcodec:h264',
+            'acodec:aac',
+        ],
+        
+        'postprocessor_args': [
+            '-c:v', 'copy',
+            '-c:a', 'copy',
+        ],
+        
+        'max_filesize': 2 * 1024 * 1024 * 1024,  # 2GB
         'quiet': False,
         'no_warnings': False,
+        
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         },
         'retries': 5,
+        
+        'prefer_free_formats': False,
+        'no_check_certificate': False,
+        'keepvideo': False,
     }
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Extract info first
+            print("Extracting video info...", file=sys.stderr)
             info = ydl.extract_info(url, download=False)
             if info is None:
                 print("ERROR: Could not extract video info", file=sys.stderr)
@@ -36,46 +70,54 @@ def download_youtube_video(url):
             video_id = info.get('id', 'unknown')
             title = info.get('title', 'video')
             
-            # Download
+            # Get available formats info
+            formats = info.get('formats', [])
+            if formats:
+                best_format = formats[-1]
+                print(f"Selected format: {best_format.get('format_note', 'N/A')} - {best_format.get('ext', 'N/A')}", file=sys.stderr)
+                print(f"Resolution: {best_format.get('resolution', 'N/A')}", file=sys.stderr)
+                print(f"Video codec: {best_format.get('vcodec', 'N/A')}", file=sys.stderr)
+                print(f"Audio codec: {best_format.get('acodec', 'N/A')}", file=sys.stderr)
+            
+            print("Downloading...", file=sys.stderr)
             ydl.download([url])
             
-            # Find downloaded file
-            possible_files = [
-                os.path.join(output_dir, f"ytvid_{video_id}.mp4"),
-                os.path.join(output_dir, f"ytvid_{video_id}.webm"),
-                os.path.join(output_dir, f"ytvid_{video_id}.mkv"),
-            ]
-            
+            # ✅ FIX: Cari file dengan unique_id yang baru saja dibuat
+            expected_prefix = f"ytvid_{unique_id}_"
             downloaded_file = None
-            for f in possible_files:
-                if os.path.exists(f):
-                    downloaded_file = f
-                    break
             
-            # Fallback: search for any ytvid_ file with video_id
-            if not downloaded_file:
-                max_wait = 30
-                waited = 0
-                while waited < max_wait:
-                    files = os.listdir(output_dir)
-                    for f in files:
-                        if f.startswith(f'ytvid_{video_id}'):
-                            downloaded_file = os.path.join(output_dir, f)
+            # Tunggu file muncul (max 30 detik)
+            max_wait = 60
+            waited = 0
+            while waited < max_wait and not downloaded_file:
+                files = os.listdir(output_dir)
+                for f in files:
+                    if f.startswith(expected_prefix) and f.endswith(('.mp4', '.mkv', '.webm')):
+                        # ✅ FIX: Verifikasi file ini baru dibuat (dalam 1 menit terakhir)
+                        file_path = os.path.join(output_dir, f)
+                        file_stat = os.stat(file_path)
+                        file_age = time.time() - file_stat.st_mtime
+                        
+                        if file_age < 60:  # File dibuat dalam 1 menit terakhir
+                            downloaded_file = file_path
                             break
-                    if downloaded_file:
-                        break
+                
+                if not downloaded_file:
                     time.sleep(0.5)
                     waited += 0.5
             
             if not downloaded_file:
-                print(f"ERROR: Timeout waiting for file", file=sys.stderr)
+                print(f"ERROR: Could not find downloaded file with prefix {expected_prefix}", file=sys.stderr)
                 sys.exit(1)
             
-            # Check file size and always send as document
+            # Get file size
             file_size = os.path.getsize(downloaded_file)
+            size_mb = file_size / 1024 / 1024
+            print(f"Download complete! Size: {size_mb:.2f} MB", file=sys.stderr)
+            print(f"File saved to: {downloaded_file}", file=sys.stderr)
             
-            # Print: DOCUMENT:filepath:title
-            print(f"DOCUMENT:{downloaded_file}:{title}")
+            # ✅ FIX: Output format VIDEO (bukan DOCUMENT)
+            print(f"VIDEO:{downloaded_file}:{title}:{unique_id}")
                 
     except Exception as e:
         error_str = str(e).lower()
@@ -85,6 +127,8 @@ def download_youtube_video(url):
             print("ERROR: copyright", file=sys.stderr)
         elif 'age' in error_str or 'restricted' in error_str:
             print("ERROR: age restricted", file=sys.stderr)
+        elif 'filesize' in error_str:
+            print("ERROR: File too large (max 2GB)", file=sys.stderr)
         else:
             print(f"ERROR: {str(e)}", file=sys.stderr)
         sys.exit(1)

@@ -30,7 +30,7 @@ def download_tiktok(url):
     ydl_opts = {
         'format': 'best',
         'outtmpl': os.path.join(output_dir, f'tt_{video_id}.%(ext)s'),
-        'max_filesize': 100 * 1024 * 1024,
+        'max_filesize': 2 * 1024 * 1024 * 1024,  # 2GB limit
         'quiet': False,
         'no_warnings': False,
         'cookiesfrombrowser': None,

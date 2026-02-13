@@ -23,10 +23,10 @@ async function connectToWhatsApp() {
     }
     
     if (connection === 'close') {
-      // Update last disconnect timestamp SEBELUM reconnect
-      configManager.saveLastDisconnect()
-      
       const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut
+      
+      // Update last disconnect timestamp
+      configManager.saveLastDisconnect()
       
       console.log('❌ Connection closed. Reason:', lastDisconnect?.error?.output?.statusCode)
       console.log('🕐 Disconnected at:', formatJakartaTime())

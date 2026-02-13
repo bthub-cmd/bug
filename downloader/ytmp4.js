@@ -4,7 +4,8 @@ import fs from 'fs';
 
 const downloadYoutube = (url, outputDir) => {
 	return new Promise((resolve, reject) => {
-		const filename = `yt_${Date.now()}.mp4`;
+		const randomStr = Math.random().toString(36).substring(2, 8);
+		const filename = `yt_${Date.now()}_${randomStr}.mp4`;
 		const outputFile = path.join(outputDir, filename);
 		
 		const ytdlp = spawn('yt-dlp', [
@@ -39,7 +40,7 @@ const downloadYoutube = (url, outputDir) => {
 		setTimeout(() => {
 			ytdlp.kill();
 			reject(new Error('Timeout - download terlalu lama'));
-		}, 600000); // 10 menit timeout
+		}, 600000);
 	});
 };
 
@@ -55,15 +56,14 @@ export default {
 	private: false,
 
 	haruna: async function (m, { sock, text }) {
-		if (!text) return m.reply("? Kasih link YouTube-nya bos.\n\nContoh: .ytmp4 https://youtube.com/watch?v=xxxxx");
+		if (!text) return m.reply("❓ Kasih link YouTube-nya bos.\n\nContoh: .ytmp4 https://youtube.com/watch?v=xxxxx");
 		
-		// Cek apakah link YouTube
 		const youtubeRegex = /(youtube\.com|youtu\.be)/i;
 		if (!youtubeRegex.test(text)) {
-			return m.reply("? Link bukan YouTube bos.\n\nKhusus YouTube aja ya.");
+			return m.reply("❌ Link bukan YouTube bos.\n\nKhusus YouTube aja ya.");
 		}
 
-		m.react("?");
+		m.react("⏳");
 
 		const outputDir = path.join(process.cwd(), 'cache');
 		
@@ -80,31 +80,34 @@ export default {
 
 			console.log('[YTMP4] Sending:', filePath, `(${sizeMB} MB)`);
 
-			// Kirim sebagai dokumen MP4
+			// ✅ FIX: Kirim sebagai video playable (BUKAN DOKUMEN)
+			// HAPUS fileName, HAPUS document, cuma pakai video + mimetype
 			await sock.sendMessage(
 				m.chat,
 				{
-					document: fs.readFileSync(filePath),
+					video: fs.readFileSync(filePath),
 					mimetype: 'video/mp4',
-					fileName: `youtube_video_${Date.now()}.mp4`,
-					caption: `? *YouTube Downloaded*\n\n?? Size: ${sizeMB} MB\n?? Quality: Best available`
+					// ✅ HAPUS fileName - ini yang bikin jadi dokumen!
+					caption: `✅ *YouTube Downloaded*\n\n📦 Size: ${sizeMB} MB\n🎥 Quality: Best available\n📹 ${path.basename(filePath)}`
 				},
 				{ quoted: m }
 			);
 
-			await m.react("?");
+			await m.react("✅");
 
-			// Hapus file setelah 5 menit (biar gak penuh storage)
+			// Hapus file setelah 5 detik
 			setTimeout(() => {
 				try {
-					fs.unlinkSync(filePath);
-					console.log('[YTMP4] Deleted:', filePath);
+					if (fs.existsSync(filePath)) {
+						fs.unlinkSync(filePath);
+						console.log('[YTMP4] Deleted:', filePath);
+					}
 				} catch (e) {}
-			}, 300000);
+			}, 5000);
 
 		} catch (error) {
 			console.error('[YTMP4] Error:', error);
-			await m.react("?");
+			await m.react("❌");
 			
 			let errMsg = error.message;
 			if (errMsg.includes('max-filesize')) {
@@ -115,7 +118,7 @@ export default {
 				errMsg = "Video tidak ditemukan atau dihapus";
 			}
 			
-			m.reply(`? Gagal download: ${errMsg}`);
+			m.reply(`❌ Gagal download: ${errMsg}`);
 		}
 	},
 

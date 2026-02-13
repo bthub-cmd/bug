@@ -15,6 +15,7 @@ const CHANGELOG = `
 • .maintenance - Maintenance broadcast (Owner)
 
 🔧 IMPROVEMENTS:
+• Instagram download has been flixed and is now fully operational
 • YouTube downloads now use HIGHEST quality available
 • Enhanced .ping
 • Better error handling
